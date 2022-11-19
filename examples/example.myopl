@@ -15,7 +15,7 @@ FUN join(elements, separator)
 	len = LEN(elements)
 
 	FOR i = 0 TO len THEN
-		result = result + elements/i
+		result = result + elements[i]
 		IF i != len - 1 THEN result = result + separator
 	END
 
@@ -26,7 +26,7 @@ FUN map(elements, func)
 	new_elements = []
 
 	FOR i = 0 TO LEN(elements) THEN
-		APPEND(new_elements, func(elements/i))
+		APPEND(new_elements, func(elements[i]))
 	END
 
 	RETURN new_elements

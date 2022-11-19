@@ -34,6 +34,7 @@ atom        : INT|FLOAT|STRING|IDENTIFIER
             : while-expr
             : func-def
             : do-expr
+            : atom LSQUARE expr RSQUARE
 
 list-expr   : LSQUARE (expr (COMMA expr)*)? RSQUARE
 

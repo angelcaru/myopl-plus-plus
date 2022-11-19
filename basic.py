@@ -8,6 +8,7 @@ import string
 import os
 import math
 from dataclasses import dataclass
+from typing import Any
 
 #######################################
 # CONSTANTS
@@ -82,6 +83,9 @@ class Value:
   
   def gen(self):
     yield RTResult().failure(self.illegal_operation())
+  
+  def get_index(self, index):
+    return None, self.illegal_operation(index)
 
   def execute(self, args):
     return RTResult().failure(self.illegal_operation())
@@ -175,7 +179,6 @@ class TryError(RTError):
     result += "\nDuring the handling of the above error, another error occurred:\n\n"
     return result + super().generate_traceback()
     
-
 #######################################
 # POSITION
 #######################################
@@ -652,7 +655,7 @@ class DoNode:
 class TryNode:
   try_block: ListNode
   exc_iden: Token
-  catch_block: any
+  catch_block: Any
   pos_start: Position
   pos_end: Position
 
@@ -662,14 +665,24 @@ class TryNode:
 @dataclass
 class ForInNode:
   var_name_tok: Token
-  iterable_node: any
-  body_node: any
+  iterable_node: Any
+  body_node: Any
   pos_start: Position
   pos_end: Position
   should_return_null: bool
 
   def __repr__(self) -> str:
     return f"(FOR {self.var_name_tok} IN {self.iterable_node!r} THEN {self.body_node!r})"
+
+@dataclass
+class IndexGetNode:
+  indexee: Any
+  index: Any
+  pos_start: Position
+  pos_end: Position
+
+  def __repr__(self):
+    return f"({self.indexee!r}[{self.index!r}])"
 
 #######################################
 # PARSE RESULT
@@ -955,18 +968,19 @@ class Parser:
   def atom(self):
     res = ParseResult()
     tok = self.current_tok
+    node = None
 
     if tok.type in (TT_INT, TT_FLOAT):
       self.advance(res)
-      return res.success(NumberNode(tok))
+      node = NumberNode(tok)
 
     elif tok.type == TT_STRING:
       self.advance(res)
-      return res.success(StringNode(tok))
+      node = StringNode(tok)
 
     elif tok.type == TT_IDENTIFIER:
       self.advance(res)
-      return res.success(VarAccessNode(tok))
+      node = VarAccessNode(tok)
 
     elif tok.type == TT_LPAREN:
       self.advance(res)
@@ -974,7 +988,7 @@ class Parser:
       if res.error: return res
       if self.current_tok.type == TT_RPAREN:
         self.advance(res)
-        return res.success(expr)
+        node = expr
       else:
         return res.failure(InvalidSyntaxError(
           self.current_tok.pos_start, self.current_tok.pos_end,
@@ -984,37 +998,54 @@ class Parser:
     elif tok.type == TT_LSQUARE:
       list_expr = res.register(self.list_expr())
       if res.error: return res
-      return res.success(list_expr)
+      node = list_expr
     
     elif tok.matches(TT_KEYWORD, 'IF'):
       if_expr = res.register(self.if_expr())
       if res.error: return res
-      return res.success(if_expr)
+      node = if_expr
 
     elif tok.matches(TT_KEYWORD, 'FOR'):
       for_expr = res.register(self.for_expr())
       if res.error: return res
-      return res.success(for_expr)
+      node = for_expr
 
     elif tok.matches(TT_KEYWORD, 'WHILE'):
       while_expr = res.register(self.while_expr())
       if res.error: return res
-      return res.success(while_expr)
+      node = while_expr
 
     elif tok.matches(TT_KEYWORD, 'FUN'):
       func_def = res.register(self.func_def())
       if res.error: return res
-      return res.success(func_def)
+      node = func_def
 
     elif tok.matches(TT_KEYWORD, 'DO'):
       do_expr = res.register(self.do_expr())
       if res.error: return res
-      return res.success(do_expr)
+      node = do_expr
 
-    return res.failure(InvalidSyntaxError(
-      tok.pos_start, tok.pos_end,
-      "Expected int, float, identifier, '+', '-', '(', '[', IF', 'FOR', 'WHILE', 'FUN'"
-    ))
+    if node is None:
+      return res.failure(InvalidSyntaxError(
+        tok.pos_start, tok.pos_end,
+        "Expected int, float, identifier, '+', '-', '(', '[', IF', 'FOR', 'WHILE', 'FUN'"
+      ))
+    
+    if self.current_tok.type == TT_LSQUARE:
+      self.advance(res)
+      index = res.register(self.expr())
+      if res.error: return res
+
+      if self.current_tok.type != TT_RSQUARE:
+        return res.failure(InvalidSyntaxError(
+          self.current_tok.pos_start, self.current_tok.pos_end,
+          "Expected ']'"
+        ))
+      
+      self.advance(res)
+      return res.success(IndexGetNode(node, index, tok.pos_start, self.current_tok.pos_end))
+    
+    return res.success(node)
 
   def list_expr(self):
     res = ParseResult()
@@ -1741,6 +1772,18 @@ class String(Value):
     for char in self.value:
       yield RTResult().success(String(char))
 
+  def get_index(self, index):
+    if not isinstance(index, Number):
+      return None, self.illegal_operation(index)
+    try:
+      return self.value[index.value], None
+    except IndexError:
+      return None, RTError(
+        index.pos_start, index.pos_end,
+        f"Cannot retrieve character {index} from string {self!r} because it is out of bounds.",
+        self.context
+      )
+
   def is_true(self):
     return len(self.value) > 0
 
@@ -1805,6 +1848,18 @@ class List(Value):
   def gen(self):
     for elt in self.elements:
       yield RTResult().success(elt)
+
+  def get_index(self, index):
+    if not isinstance(index, Number):
+      return None, self.illegal_operation(index)
+    try:
+      return self.elements[index.value], None
+    except IndexError:
+      return None, RTError(
+        index.pos_start, index.pos_end,
+        f"Cannot retrieve element {index} from list {self!r} because it is out of bounds.",
+        self.context
+      )
 
   def copy(self):
     copy = List(self.elements)
@@ -2157,7 +2212,6 @@ class Iterator(Value):
 
   def copy(self):
     return Iterator(self.it)
-  
 
 #######################################
 # CONTEXT
@@ -2529,7 +2583,17 @@ class Interpreter:
     if should_return_null: return res.success(Number.null)
     return res.success(elements)
 
+  def visit_IndexGetNode(self, node, context):
+    res = RTResult()
+    indexee = res.register(self.visit(node.indexee, context))
+    if res.should_return(): return res
 
+    index = res.register(self.visit(node.index, context))
+    if res.should_return(): return res
+
+    result, error = indexee.get_index(index)
+    if error: return res.failure(error)
+    return res.success(result)
 
 
 #######################################
