@@ -12,7 +12,7 @@ Additions so far:
  - Dynamic arguments. `FUN whatever(arg FROM $/2) -> arg; PRINT(whatever(1))`
  - No `VAR` keyword. Just assign variables with `<name> = <expr>`
  - `FOR`-`IN` loops. `FOR char IN "abc" THEN PRINT(char)`
- - Proper indexing. `list = [1, 2, 3]; PRINT(list[0])`
+ - Proper indexing. `list = [1, 2, 3]; PRINT(list[0]); list[0] = 4; PRINT(list[0])`
 
 ## -- Original README starts below --
 

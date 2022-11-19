@@ -75,8 +75,8 @@ class Value:
   def ored_by(self, other):
     return None, self.illegal_operation(other)
 
-  def notted(self, other): # why need `other` for NOT?
-    return None, self.illegal_operation(other)
+  def notted(self): # why need `other` for NOT?
+    return None, self.illegal_operation()
   
   def iter(self):
     return Iterator(self.gen)
@@ -87,6 +87,9 @@ class Value:
   def get_index(self, index):
     return None, self.illegal_operation(index)
 
+  def set_index(self, index, value):
+    return None, self.illegal_operation(index, value)
+
   def execute(self, args):
     return RTResult().failure(self.illegal_operation())
 
@@ -96,10 +99,12 @@ class Value:
   def is_true(self):
     return False
 
-  def illegal_operation(self, other=None):
-    if not other: other = self
+  def illegal_operation(self, *others):
+    if len(others) == 0:
+      others = self,
+    
     return RTError(
-      self.pos_start, other.pos_end,
+      self.pos_start, others[-1].pos_end,
       'Illegal operation',
       self.context
     )
@@ -684,6 +689,17 @@ class IndexGetNode:
   def __repr__(self):
     return f"({self.indexee!r}[{self.index!r}])"
 
+@dataclass
+class IndexSetNode:
+  indexee: Any
+  index: Any
+  value: Any
+  pos_start: Position
+  pos_end: Position
+
+  def __repr__(self):
+    return f"({self.indexee!r}[{self.index!r}]={self.value!r})"
+
 #######################################
 # PARSE RESULT
 #######################################
@@ -864,6 +880,7 @@ class Parser:
 
   def assign_expr(self):
     res = ParseResult()
+    pos_start = self.current_tok.pos_start
 
     if self.current_tok.type != TT_IDENTIFIER: 
       return res.failure(InvalidSyntaxError(
@@ -932,7 +949,7 @@ class Parser:
 
   def call(self):
     res = ParseResult()
-    atom = res.register(self.atom())
+    index = res.register(self.atom())
     if res.error: return res
 
     if self.current_tok.type == TT_LPAREN:
@@ -962,8 +979,8 @@ class Parser:
           ))
 
         self.advance(res)
-      return res.success(CallNode(atom, arg_nodes))
-    return res.success(atom)
+      return res.success(CallNode(index, arg_nodes))
+    return res.success(index)
 
   def atom(self):
     res = ParseResult()
@@ -1035,14 +1052,23 @@ class Parser:
       self.advance(res)
       index = res.register(self.expr())
       if res.error: return res
-
+      
       if self.current_tok.type != TT_RSQUARE:
         return res.failure(InvalidSyntaxError(
-          self.current_tok.pos_start, self.current_tok.pos_end,
+          tok.pos_start, self.current_tok.pos_end,
           "Expected ']'"
         ))
-      
+
       self.advance(res)
+
+      if self.current_tok.type == TT_EQ:
+        self.advance(res)
+
+        value = res.register(self.expr())
+        if res.error: return error
+
+        return res.success(IndexSetNode(node, index, value, tok.pos_start, self.current_tok.pos_end))
+      
       return res.success(IndexGetNode(node, index, tok.pos_start, self.current_tok.pos_end))
     
     return res.success(node)
@@ -1860,6 +1886,20 @@ class List(Value):
         f"Cannot retrieve element {index} from list {self!r} because it is out of bounds.",
         self.context
       )
+  
+  def set_index(self, index, value):
+    if not isinstance(index, Number):
+      return None, self.illegal_operation(index)
+    try:
+      self.elements[index.value] = value
+    except IndexError:
+      return None, RTError(
+        index.pos_start, index.pos_end,
+        f"Cannot set element {index} from list {self!r} to {value!r} because it is out of bounds.",
+        self.context
+      )
+    
+    return self, None
 
   def copy(self):
     copy = List(self.elements)
@@ -2595,6 +2635,21 @@ class Interpreter:
     if error: return res.failure(error)
     return res.success(result)
 
+  def visit_IndexSetNode(self, node, context):
+    res = RTResult()
+    indexee = res.register(self.visit(node.indexee, context))
+    if res.should_return(): return res
+
+    index = res.register(self.visit(node.index, context))
+    if res.should_return(): return res
+
+    value = res.register(self.visit(node.value, context))
+    if res.should_return(): return res
+
+    result, error = indexee.set_index(index, value)
+    if error: return res.failure(error)
+
+    return res.success(result)
 
 #######################################
 # RUN
