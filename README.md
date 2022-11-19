@@ -11,6 +11,7 @@ Additions so far:
  - TRY statement. `TRY PRINT(1/0) CATCH AS error; PRINT("uhhhhhhhhhhhhhhhhhhh... infinity?"); PRINT(error); END`
  - Dynamic arguments. `FUN whatever(arg FROM $/2) -> arg; PRINT(whatever(1))`
  - No `VAR` keyword. Just assign variables with `<name> = <expr>`
+ - `FOR`-`IN` loops. `FOR char IN "abc" THEN PRINT(char)`
 
 ## -- Original README starts below --
 

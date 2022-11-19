@@ -49,7 +49,13 @@ if-expr-c   : KEYWORD:ELSE
               statement
             | (NEWLINE statements KEYWORD:END)
 
-for-expr    : KEYWORD:FOR IDENTIFIER EQ expr KEYWORD:TO expr 
+for-expr    : for-expr-acc|for-in-expr
+
+for-in-expr : KEYWORD:FOR IDENTIFIER KEYWORD:IN expr KEYWORD:THEN
+              statement
+            | (NEWLINE statements KEYWORD:END)
+
+for-expr-acc: KEYWORD:FOR IDENTIFIER EQ expr KEYWORD:TO expr 
               (KEYWORD:STEP expr)? KEYWORD:THEN
               statement
             | (NEWLINE statements KEYWORD:END)

@@ -1,0 +1,8 @@
+
+FOR char IN "abc" THEN
+    PRINT(char)
+END
+
+FOR elt IN [1, 2, 3] THEN
+    PRINT(elt)
+END

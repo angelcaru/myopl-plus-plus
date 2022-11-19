@@ -74,8 +74,14 @@ class Value:
   def ored_by(self, other):
     return None, self.illegal_operation(other)
 
-  def notted(self, other):
+  def notted(self, other): # why need `other` for NOT?
     return None, self.illegal_operation(other)
+  
+  def iter(self):
+    return Iterator(self.gen)
+  
+  def gen(self):
+    yield RTResult().failure(self.illegal_operation())
 
   def execute(self, args):
     return RTResult().failure(self.illegal_operation())
@@ -93,7 +99,6 @@ class Value:
       'Illegal operation',
       self.context
     )
-
 
 class Error(Value):
   def __init__(self, pos_start, pos_end, error_name, details):
@@ -249,6 +254,7 @@ KEYWORDS = [
   'CATCH',
   'AS',
   'FROM',
+  'IN',
 ]
 
 class Token:
@@ -652,6 +658,18 @@ class TryNode:
 
   def __repr__(self) -> str:
     return f'(TRY {self.try_block!r} CATCH AS {self.exc_iden!r} THEN {self.catch_block!r})'
+
+@dataclass
+class ForInNode:
+  var_name_tok: Token
+  iterable_node: any
+  body_node: any
+  pos_start: Position
+  pos_end: Position
+  should_return_null: bool
+
+  def __repr__(self) -> str:
+    return f"(FOR {self.var_name_tok} IN {self.iterable_node!r} THEN {self.body_node!r})"
 
 #######################################
 # PARSE RESULT
@@ -1145,6 +1163,7 @@ class Parser:
 
   def for_expr(self):
     res = ParseResult()
+    pos_start = self.current_tok.pos_start.copy()
 
     if not self.current_tok.matches(TT_KEYWORD, 'FOR'):
       return res.failure(InvalidSyntaxError(
@@ -1163,35 +1182,44 @@ class Parser:
     var_name = self.current_tok
     self.advance(res)
 
-    if self.current_tok.type != TT_EQ:
+    is_for_in = False
+
+    if self.current_tok.type != TT_EQ and not self.current_tok.matches(TT_KEYWORD, "IN"):
       return res.failure(InvalidSyntaxError(
         self.current_tok.pos_start, self.current_tok.pos_end,
-        f"Expected '='"
+        f"Expected '=' or 'IN'"
       ))
-    
-    self.advance(res)
+    elif self.current_tok.matches(TT_KEYWORD, "IN"):
+      self.advance(res)
+      is_for_in = True
 
-    start_value = res.register(self.expr())
-    if res.error: return res
-
-    if not self.current_tok.matches(TT_KEYWORD, 'TO'):
-      return res.failure(InvalidSyntaxError(
-        self.current_tok.pos_start, self.current_tok.pos_end,
-        f"Expected 'TO'"
-      ))
-    
-    self.advance(res)
-
-    end_value = res.register(self.expr())
-    if res.error: return res
-
-    if self.current_tok.matches(TT_KEYWORD, 'STEP'):
+      iterable_node = res.register(self.expr())
+      if res.error: return res
+      
+    else:
       self.advance(res)
 
-      step_value = res.register(self.expr())
+      start_value = res.register(self.expr())
       if res.error: return res
-    else:
-      step_value = None
+
+      if not self.current_tok.matches(TT_KEYWORD, 'TO'):
+        return res.failure(InvalidSyntaxError(
+          self.current_tok.pos_start, self.current_tok.pos_end,
+          f"Expected 'TO'"
+        ))
+    
+      self.advance(res)
+
+      end_value = res.register(self.expr())
+      if res.error: return res
+
+      if self.current_tok.matches(TT_KEYWORD, 'STEP'):
+        self.advance(res)
+
+        step_value = res.register(self.expr())
+        if res.error: return res
+      else:
+        step_value = None
 
     if not self.current_tok.matches(TT_KEYWORD, 'THEN'):
       return res.failure(InvalidSyntaxError(
@@ -1213,13 +1241,20 @@ class Parser:
           f"Expected 'END'"
         ))
 
+      pos_end = self.current_tok.pos_end.copy()
       self.advance(res)
 
+      if is_for_in:
+        return res.success(ForInNode(var_name, iterable_node, body, pos_start, pos_end, True))
       return res.success(ForNode(var_name, start_value, end_value, step_value, body, True))
     
     body = res.register(self.statement())
     if res.error: return res
 
+    pos_end = self.current_tok.pos_end.copy()
+
+    if is_for_in:
+      return res.success(ForInNode(var_name, iterable_node, body, pos_start, pos_end, False))
     return res.success(ForNode(var_name, start_value, end_value, step_value, body, False))
 
   def while_expr(self):
@@ -1702,6 +1737,10 @@ class String(Value):
     else:
       return None, Value.illegal_operation(self, other)
 
+  def gen(self):
+    for char in self.value:
+      yield RTResult().success(String(char))
+
   def is_true(self):
     return len(self.value) > 0
 
@@ -1763,6 +1802,10 @@ class List(Value):
     else:
       return None, Value.illegal_operation(self, other)
   
+  def gen(self):
+    for elt in self.elements:
+      yield RTResult().success(elt)
+
   def copy(self):
     copy = List(self.elements)
     copy.set_pos(self.pos_start, self.pos_end)
@@ -2091,6 +2134,30 @@ BuiltInFunction.pop         = BuiltInFunction("pop")
 BuiltInFunction.extend      = BuiltInFunction("extend")
 BuiltInFunction.len					= BuiltInFunction("len")
 BuiltInFunction.run					= BuiltInFunction("run")
+
+class Iterator(Value):
+  def __init__(self, generator):
+    super().__init__()
+    self.it = generator()
+  
+  def iter(self):
+    return self
+  
+  def __iter__(self):
+    return self
+
+  def __next__(self):
+    return next(self.it)
+  
+  def __str__(self):
+    return '<iterator>'
+
+  def __repr__(self):
+    return str(self)
+
+  def copy(self):
+    return Iterator(self.it)
+  
 
 #######################################
 # CONTEXT
@@ -2438,6 +2505,31 @@ class Interpreter:
       return res.success(Number.null)
     else:
       return res.success(Number.null)
+  
+  def visit_ForInNode(self, node, context):
+    res = RTResult()
+    var_name = node.var_name_tok.value
+    body = node.body_node
+    should_return_null = node.should_return_null
+
+    iterable = res.register(self.visit(node.iterable_node, context))
+    it = iterable.iter()
+
+    elements = []
+
+    for it_res in it:
+      elt = res.register(it_res)
+      if res.should_return(): return res
+
+      context.symbol_table.set(var_name, elt)
+
+      elements.append(res.register(self.visit(body, context)))
+      if res.should_return(): return res
+    
+    if should_return_null: return res.success(Number.null)
+    return res.success(elements)
+
+
 
 
 #######################################
