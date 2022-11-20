@@ -22,6 +22,7 @@ Additions so far:
  - `SWITCH` statements (my language is now better than Python 3.9). `switch.myopl`
  - `WAIT` function.
  - `ARGV` variable.
+ - `CONST` keyword. `CONST x = 3; x = 4 # error`
 
 ## -- Original README starts below --
 

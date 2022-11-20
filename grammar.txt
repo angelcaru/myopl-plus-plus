@@ -9,6 +9,7 @@ statement		: KEYWORD:RETURN expr?
 						: expr
 
 expr        : assign-expr
+            : KEYWORD:CONST identifier EQ expr
             : comp-expr ((KEYWORD:AND|KEYWORD:OR) comp-expr)*
 
 assign-expr : IDENTIFIER EQ expr

@@ -284,6 +284,7 @@ KEYWORDS = [
   'IN',
   'SWITCH',
   'CASE',
+  'CONST',
 ]
 
 class Token:
@@ -557,12 +558,17 @@ class VarAccessNode:
     self.pos_end = self.var_name_tok.pos_end
 
 class VarAssignNode:
-  def __init__(self, var_name_tok, value_node):
+  def __init__(self, var_name_tok, value_node, is_const=False):
     self.var_name_tok = var_name_tok
     self.value_node = value_node
+    self.is_const = is_const
 
     self.pos_start = self.var_name_tok.pos_start
     self.pos_end = self.value_node.pos_end
+  
+  def __repr__(self):
+    const = "CONST " if self.is_const else ""
+    return f"({const}{self.var_name_tok} = {self.value_node!r})"
 
 class BinOpNode:
   def __init__(self, left_node, op_tok, right_node):
@@ -918,6 +924,32 @@ class Parser:
     var_assign_node = res.try_register(self.assign_expr())
     if var_assign_node: return res.success(var_assign_node)
     else: self.reverse(res.to_reverse_count)
+
+    if self.current_tok.matches(TT_KEYWORD, "CONST"):
+      self.advance(res)
+
+      if self.current_tok.type != TT_IDENTIFIER:
+        return res.failure(InvalidSyntaxError(
+          self.current_tok.pos_start, self.current_tok.pos_end,
+          "Expected identifier"
+        ))
+
+      identifier = self.current_tok
+
+      self.advance(res)
+
+      if self.current_tok.type != TT_EQ:
+        return res.failure(InvalidSyntaxError(
+          self.current_tok.pos_start, self.current_tok.pos_end,
+          "Expected '='"
+        ))
+      
+      self.advance(res)
+
+      assign_expr = res.register(self.expr())
+      if res.error: return res
+
+      return res.success(VarAssignNode(identifier, assign_expr, is_const=True))
 
     node = res.register(self.bin_op(self.comp_expr, ((TT_KEYWORD, 'AND'), (TT_KEYWORD, 'OR'))))
 
@@ -1713,15 +1745,12 @@ class Parser:
 
   def switch_statement(self):
     res = ParseResult()
-    ("in switch_statement()")
     pos_start = self.current_tok.pos_start
 
-    ("before condition")
     condition = res.register(self.expr())
     if res.error: 
       (res.error)
       return res
-    ("after condition")
 
     if self.current_tok.type != TT_NEWLINE:
       return res.failure(InvalidSyntaxError(
@@ -1743,9 +1772,9 @@ class Parser:
         ))
       self.advance(res)
 
-      ("before case")
+
       body = res.register(self.statements())
-      ("after case")
+
       if res.error: return res
 
       cases.append((case, body))
@@ -1766,8 +1795,6 @@ class Parser:
     self.advance(res)
 
     node = SwitchNode(condition, cases, else_case, pos_start, pos_end)
-    (cases)
-    (node)
     return res.success(node)
 
   ###################################
@@ -2703,6 +2730,7 @@ class SymbolTable:
   def __init__(self, parent=None):
     self.symbols = {}
     self.parent = parent
+    self.const = set()
 
   def get(self, name):
     value = self.symbols.get(name, None)
@@ -2712,6 +2740,10 @@ class SymbolTable:
 
   def set(self, name, value):
     self.symbols[name] = value
+
+  def set_const(self, name, value):
+    self.symbols[name] = value
+    self.const.add(name)
 
   def remove(self, name):
     del self.symbols[name]
@@ -2774,8 +2806,20 @@ class Interpreter:
     value = res.register(self.visit(node.value_node, context))
     if res.should_return(): return res
 
-    context.symbol_table.set(var_name, value)
-    return res.success(value)
+    if node.is_const:
+      method = context.symbol_table.set_const
+    else:
+      method = context.symbol_table.set
+    
+    if var_name not in context.symbol_table.const:
+      method(var_name, value)
+      return res.success(value)
+    else:
+      return res.failure(RTError(
+        node.pos_start, node.pos_end,
+        f"Assignment to constant variable '{var_name}'",
+        context
+      ))
 
   def visit_BinOpNode(self, node, context):
     res = RTResult()
