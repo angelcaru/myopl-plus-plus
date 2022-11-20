@@ -57,31 +57,31 @@ class Value:
     return None, self.illegal_operation(other)
 
   def get_comparison_eq(self, other):
-    return None, self.illegal_operation(other)
+    return Number(bool(self.value == other.value)), None
 
   def get_comparison_ne(self, other):
-    return None, self.illegal_operation(other)
+    return Number(bool(self.value != other.value)), None
 
   def get_comparison_lt(self, other):
-    return None, self.illegal_operation(other)
+    return Number(bool(self.value < other.value)), None
 
   def get_comparison_gt(self, other):
-    return None, self.illegal_operation(other)
+    return Number(bool(self.value > other.value)), None
 
   def get_comparison_lte(self, other):
-    return None, self.illegal_operation(other)
+    return Number(bool(self.value <= other.value)), None
 
   def get_comparison_gte(self, other):
-    return None, self.illegal_operation(other)
+    return Number(bool(self.value >= other.value)), None
 
   def anded_by(self, other):
-    return None, self.illegal_operation(other)
+    return Number(bool(self.value and other.value)), None
 
   def ored_by(self, other):
-    return None, self.illegal_operation(other)
+    return Number(bool(self.value or other.value)), None
 
   def notted(self): # why need `other` for NOT?
-    return None, self.illegal_operation()
+    return Number(bool(not self.value)), None
   
   def iter(self):
     return Iterator(self.gen)
@@ -1923,6 +1923,7 @@ class List(Value):
   def __init__(self, elements):
     super().__init__()
     self.elements = elements
+    self.value = elements
 
   def added_to(self, other):
     new_list = self.copy()
@@ -2504,6 +2505,10 @@ class Iterator(Value):
 
   def __repr__(self):
     return str(self)
+  
+  def __getattr__(self, attr):
+    if attr.startswith("get_comparison_"):
+      return lambda self, other: Number(self is other), None
 
   def copy(self):
     return Iterator(self.it)
@@ -2512,6 +2517,7 @@ class Dict(Value):
   def __init__(self, values):
     super().__init__()
     self.values = values
+    self.value = values
 
   def added_to(self, other):
     if not isinstance(other, Dict):
