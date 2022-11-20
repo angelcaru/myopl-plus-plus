@@ -17,6 +17,7 @@ Additions so far:
  - Added file descriptor-based file I/O. `file-io.myopl`
  - Backslash makes lexer skip next character.
  - More escape characters. The lexer now supports every single escape sequence Python does, including stuff like `"Hello,\x0AWorld"`.
+ - `_` variable is automatically set to the last evaluated expression in the REPL.
 
 ## -- Original README starts below --
 

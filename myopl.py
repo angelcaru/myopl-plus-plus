@@ -21,10 +21,11 @@ def main():
 		if error:
 			print(error.as_string(), file=sys.stderr)
 		elif result:
-			if len(result.elements) == 1:
-				print(repr(result.elements[0]))
-			else:
-				print(repr(result))
+			real_result = result.elements[0]
+			if len(result.elements) != 1:
+				real_result = result
+			print(repr(real_result))
+			basic.global_symbol_table.set("_", real_result)
 
 if __name__ == "__main__":
 	main()
