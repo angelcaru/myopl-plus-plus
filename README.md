@@ -20,6 +20,7 @@ Additions so far:
  - `_` variable is automatically set to the last evaluated expression in the REPL.
  - Top-level RETURN (exit code)
  - `SWITCH` statements (my language is now better than Python 3.9). `switch.myopl`
+ - `WAIT` function.
 
 ## -- Original README starts below --
 

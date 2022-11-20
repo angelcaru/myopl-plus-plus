@@ -7,6 +7,7 @@ from strings_with_arrows import *
 import string
 import os
 import math
+import time
 from dataclasses import dataclass
 from typing import Any, List, Tuple
 
@@ -2556,6 +2557,25 @@ class BuiltInFunction(BaseFunction):
 
     return res.success(Number.null)
 
+  @args(["secs"])
+  def execute_wait(self, exec_ctx):
+    sym = exec_ctx.symbol_table
+    fake_pos = create_fake_pos("<built-in function wait>")
+    res = RTResult()
+
+    secs = sym.get("secs")
+    if not isinstance(secs, Number):
+      return res.failure(RTError(
+        fake_pos, fake_pos,
+        f"1st argument of function 'wait' ('secs') must be Number",
+        exec_ctx
+      ))
+    secs = secs.value
+
+    time.sleep(secs)
+
+    return RTResult().success(Number.null)
+
 BuiltInFunction.print       = BuiltInFunction("print")
 BuiltInFunction.print_ret   = BuiltInFunction("print_ret")
 BuiltInFunction.input       = BuiltInFunction("input")
@@ -2574,6 +2594,7 @@ BuiltInFunction.open        = BuiltInFunction("open")
 BuiltInFunction.read        = BuiltInFunction("read")
 BuiltInFunction.write       = BuiltInFunction("write")
 BuiltInFunction.close       = BuiltInFunction("close")
+BuiltInFunction.wait        = BuiltInFunction("wait")
 
 class Iterator(Value):
   def __init__(self, generator):
@@ -3153,6 +3174,7 @@ global_symbol_table.set("OPEN", BuiltInFunction.open)
 global_symbol_table.set("READ", BuiltInFunction.read)
 global_symbol_table.set("WRITE", BuiltInFunction.write)
 global_symbol_table.set("CLOSE", BuiltInFunction.close)
+global_symbol_table.set("WAIT", BuiltInFunction.wait)
 
 def run(fn, text, context=None, entry_pos=None):
   # Generate tokens
