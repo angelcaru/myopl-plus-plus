@@ -30,6 +30,7 @@ call        : index (LPAREN (expr (COMMA expr)*)? RPAREN)?
 atom        : INT|FLOAT|STRING|IDENTIFIER
             : LPAREN expr RPAREN
             : list-expr
+            : dict-expr
             : if-expr
             : for-expr
             : while-expr
@@ -40,6 +41,8 @@ index       : atom
             : index LSQUARE expr RSQUARE
 
 list-expr   : LSQUARE (expr (COMMA expr)*)? RSQUARE
+
+dict-expr   : LCURLY (expr COLON expr (COMMA expr COLON expr)*)? RCURLY
 
 if-expr     : KEYWORD:IF expr KEYWORD:THEN
               (statement if-expr-b|if-expr-c?)

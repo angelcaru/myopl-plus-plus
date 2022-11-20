@@ -236,6 +236,9 @@ TT_LTE				= 'LTE'
 TT_GTE				= 'GTE'
 TT_COMMA			= 'COMMA'
 TT_ARROW			= 'ARROW'
+TT_LCURLY     = 'LCURLY'
+TT_RCURLY     = 'RCURLY'
+TT_COLON      = 'COLON'
 TT_NEWLINE		= 'NEWLINE'
 TT_EOF				= 'EOF'
 
@@ -346,6 +349,15 @@ class Lexer:
         self.advance()
       elif self.current_char == ']':
         tokens.append(Token(TT_RSQUARE, pos_start=self.pos))
+        self.advance()
+      elif self.current_char == '{':
+        tokens.append(Token(TT_LCURLY, pos_start=self.pos))
+        self.advance()
+      elif self.current_char == '}':
+        tokens.append(Token(TT_RCURLY, pos_start=self.pos))
+        self.advance()
+      elif self.current_char == ':':
+        tokens.append(Token(TT_COLON, pos_start=self.pos))
         self.advance()
       elif self.current_char == '!':
         token, error = self.make_not_equals()
@@ -700,6 +712,18 @@ class IndexSetNode:
   def __repr__(self):
     return f"({self.indexee!r}[{self.index!r}]={self.value!r})"
 
+@dataclass
+class DictNode:
+  pairs: (Any, Any)
+  pos_start: Position
+  pos_end: Position
+
+  def __repr__(self):
+    result = "({"
+    for key, value in self.pairs:
+      result += f"{key!r}: {value!r}"
+    return result + "})"
+
 #######################################
 # PARSE RESULT
 #######################################
@@ -851,7 +875,7 @@ class Parser:
     if res.error:
       return res.failure(InvalidSyntaxError(
         self.current_tok.pos_start, self.current_tok.pos_end,
-        "Expected 'RETURN', 'CONTINUE', 'BREAK', 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[' or 'NOT'"
+        "Expected 'RETURN', 'CONTINUE', 'BREAK', 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[', '{' or 'NOT'"
       ))
     return res.success(expr)
 
@@ -867,7 +891,7 @@ class Parser:
     if res.error:
       return res.failure(InvalidSyntaxError(
         self.current_tok.pos_start, self.current_tok.pos_end,
-        "Expected 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[' or 'NOT'"
+        "Expected 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[', '{' or 'NOT'"
       ))
     
     if self.current_tok.type == TT_EQ:
@@ -885,7 +909,7 @@ class Parser:
     if self.current_tok.type != TT_IDENTIFIER: 
       return res.failure(InvalidSyntaxError(
         self.current_tok.pos_start, self.current_tok.pos_end,
-        "Expected 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[' or 'NOT'"
+        "Expected 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[', '{' or 'NOT'"
       ))
     
     var_name_tok = self.current_tok
@@ -963,7 +987,7 @@ class Parser:
         if res.error:
           return res.failure(InvalidSyntaxError(
             self.current_tok.pos_start, self.current_tok.pos_end,
-            "Expected ')', 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[' or 'NOT'"
+            "Expected ')', 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[', '{' or 'NOT'"
           ))
 
         while self.current_tok.type == TT_COMMA:
@@ -1041,6 +1065,11 @@ class Parser:
       do_expr = res.register(self.do_expr())
       if res.error: return res
       node = do_expr
+    
+    elif tok.type == TT_LCURLY:
+      dict_expr = res.register(self.dict_expr())
+      if res.error: return res
+      node = dict_expr
 
     if node is None:
       return res.failure(InvalidSyntaxError(
@@ -1093,7 +1122,7 @@ class Parser:
       if res.error:
         return res.failure(InvalidSyntaxError(
           self.current_tok.pos_start, self.current_tok.pos_end,
-          "Expected ']', 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[' or 'NOT'"
+          "Expected ']', 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[', '{' or 'NOT'"
         ))
 
       while self.current_tok.type == TT_COMMA:
@@ -1112,6 +1141,71 @@ class Parser:
 
     return res.success(ListNode(
       element_nodes,
+      pos_start,
+      self.current_tok.pos_end.copy()
+    ))
+  
+  def dict_expr(self):
+    res = ParseResult()
+    pairs = []
+    pos_start = self.current_tok.pos_start.copy()
+
+    if self.current_tok.type != TT_LCURLY:
+      return res.failure(InvalidSyntaxError(
+        self.current_tok.pos_start, self.current_tok.pos_end,
+        "Expected '{'"
+      ))
+
+    self.advance(res)
+
+    if self.current_tok.type == TT_RCURLY:
+      self.advance(res)
+    else:
+      key = res.register(self.expr())
+      if res.error: return res
+
+      if self.current_tok.type != TT_COLON:
+        return res.failure(InvalidSyntaxError(
+          self.current_tok.pos_start, self.current_tok.pos_end,
+          "Expected ':'"
+        ))
+      
+      self.advance(res)
+        
+      value = res.register(self.expr())
+      if res.error: return res
+
+      pairs.append((key, value))
+
+      while self.current_tok.type == TT_COMMA:
+        self.advance(res)
+
+        key = res.register(self.expr())
+        if res.error: return res
+
+        if self.current_tok.type != TT_COLON:
+          return res.failure(InvalidSyntaxError(
+            self.current_tok.pos_start, self.current_tok.pos_end,
+            "Expected ':'"
+          ))
+        
+        self.advance(res)
+
+        value = res.register(self.expr())
+        if res.error: return res
+
+        pairs.append((key, value))
+
+      if self.current_tok.type != TT_RCURLY:
+        return res.failure(InvalidSyntaxError(
+          self.current_tok.pos_start, self.current_tok.pos_end,
+          "Expected ',' or '}'"
+        ))
+
+      self.advance(res)
+
+    return res.success(DictNode(
+      pairs,
       pos_start,
       self.current_tok.pos_end.copy()
     ))
@@ -1521,7 +1615,7 @@ class Parser:
     if not self.current_tok.matches(TT_KEYWORD, 'END'):
       return res.failure(InvalidSyntaxError(
         self.current_tok.pos_start, self.current_tok.pos_end,
-        "Expected 'END', 'RETURN', 'CONTINUE', 'BREAK', 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[' or 'NOT'"
+        "Expected 'END', 'RETURN', 'CONTINUE', 'BREAK', 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[', '{' or 'NOT'"
       ))
     
     pos_end = self.current_tok.pos_end.copy()
@@ -1538,7 +1632,7 @@ class Parser:
     if not self.current_tok.matches(TT_KEYWORD, 'CATCH'):
       return res.failure(InvalidSyntaxError(
         self.current_tok.pos_start, self.current_tok.pos_end,
-        "Expected 'CATCH', 'RETURN', 'CONTINUE', 'BREAK', 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[' or 'NOT'"
+        "Expected 'CATCH', 'RETURN', 'CONTINUE', 'BREAK', 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[', '{' or 'NOT'"
       ))
     
     self.advance(res)
@@ -1577,7 +1671,7 @@ class Parser:
       if not self.current_tok.matches(TT_KEYWORD, 'END'):
         return res.failure(InvalidSyntaxError(
           self.current_tok.pos_start, self.current_tok.pos_end,
-          "Expected 'END', 'RETURN', 'CONTINUE', 'BREAK', 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[' or 'NOT'"
+          "Expected 'END', 'RETURN', 'CONTINUE', 'BREAK', 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[', '{' or 'NOT'"
         ))
       
       self.advance(res)
@@ -2253,6 +2347,65 @@ class Iterator(Value):
   def copy(self):
     return Iterator(self.it)
 
+class Dict(Value):
+  def __init__(self, values):
+    super().__init__()
+    self.values = values
+
+  def added_to(self, other):
+    if not isinstance(other, Dict):
+      return None, self.illegal_operation(other)
+    
+    new_dict = self.copy()
+    for key, value in other.values.items():
+      new_dict.values[key] = value
+    
+    return new_dict, None
+  
+  def gen(self):
+    fake_pos = Position(0, 0, 0, "<dict key>", "<native code>")
+    for key in self.values.keys():
+      key_as_value = String(key).set_pos(fake_pos, fake_pos).set_context(self.context)
+      yield RTResult().success(key_as_value)
+  
+  def get_index(self, index):
+    if not isinstance(index, String):
+      return None, self.illegal_operation(index)
+    
+    try:
+      return self.values[index.value], None
+    except KeyError:
+      return None, RTError(
+        self.pos_start, self.pos_end,
+        f"Could not find key {index!r} in dict {self!r}",
+        self.context
+      )
+  
+  def set_index(self, index, value):
+    if not isinstance(index, String):
+      return None, self.illegal_operation(index)
+    
+    self.values[index.value] = value
+
+    return self, None
+  
+  def __str__(self):
+    result = ""
+    for key, value in self.values.items():
+      result += f"{key}: {value}\n"
+    
+    return result[:-1]
+  
+  def __repr__(self):
+    result = "{"
+    for key, value in self.values.items():
+      result += f"{key!r}: {value!r}, "
+    
+    return result[:-2] + "}"
+
+  def copy(self):
+    return Dict(self.values).set_pos(self.pos_start, self.pos_end).set_context(self.context)
+
 #######################################
 # CONTEXT
 #######################################
@@ -2651,6 +2804,28 @@ class Interpreter:
 
     return res.success(result)
 
+  def visit_DictNode(self, node, context):
+    res = RTResult()
+    values = {}
+
+    for key_node, value_node in node.pairs:
+      key = res.register(self.visit(key_node, context))
+      if res.should_return(): return res
+
+      if not isinstance(key, String):
+        return res.failure(RTError(
+          key_node.pos_start, key_node.pos_end,
+          f"Non-string key for dict: '{key!r}'",
+          context
+        ))
+
+      value = res.register(self.visit(value_node, context))
+      if res.should_return(): return res
+
+      values[key.value] = value
+    
+    return res.success(Dict(values))
+    
 #######################################
 # RUN
 #######################################

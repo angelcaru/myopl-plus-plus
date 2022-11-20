@@ -13,6 +13,7 @@ Additions so far:
  - No `VAR` keyword. Just assign variables with `<name> = <expr>`
  - `FOR`-`IN` loops. `FOR char IN "abc" THEN PRINT(char)`
  - Proper indexing. `list = [1, 2, 3]; PRINT(list[0]); list[0] = 4; PRINT(list[0])`
+ - Dictionaries. `dict = {"abc": 123}`. Full behavior in `dict.myopl`
 
 ## -- Original README starts below --
 
