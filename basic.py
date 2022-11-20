@@ -3029,7 +3029,7 @@ global_symbol_table.set("READ", BuiltInFunction.read)
 global_symbol_table.set("WRITE", BuiltInFunction.write)
 global_symbol_table.set("CLOSE", BuiltInFunction.close)
 
-def run(fn, text, context=None, entry_pos=None, return_result=False):
+def run(fn, text, context=None, entry_pos=None):
   # Generate tokens
   lexer = Lexer(fn, text)
   tokens, error = lexer.make_tokens()
@@ -3042,12 +3042,21 @@ def run(fn, text, context=None, entry_pos=None, return_result=False):
 
   # Run program
   interpreter = Interpreter()
+  context_was_none = context is None
   context = Context('<program>', context, entry_pos)
-  if context.parent is None:
+  if context_was_none:
     context.symbol_table = global_symbol_table
   else:
     context.symbol_table = context.parent.symbol_table
   result = interpreter.visit(ast.node, context)
+  ret = result.func_return_value
+  if context_was_none and ret:
+    if not isinstance(ret, Number):
+      return None, RTError(
+        ret.pos_start, ret.pos_end,
+        "Exit code must be Number",
+        context
+      )
+    exit(ret.value)
 
-  if return_result: return result
   return result.value, result.error
