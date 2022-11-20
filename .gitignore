@@ -133,3 +133,6 @@ pyvenv.cfg
 pip-selfcheck.json
 
 # End of https://www.gitignore.io/api/python
+
+# Project-specific gitignores
+examples/new.txt

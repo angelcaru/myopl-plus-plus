@@ -1,0 +1,7 @@
+fd = OPEN("file-io.myopl")
+PRINT(READ(fd, 5000000))
+CLOSE(fd)
+
+fd = OPEN("new.txt", "w")
+WRITE(fd, "Hello, World!")
+CLOSE(fd)

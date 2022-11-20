@@ -14,6 +14,7 @@ Additions so far:
  - `FOR`-`IN` loops. `FOR char IN "abc" THEN PRINT(char)`
  - Proper indexing. `list = [1, 2, 3]; PRINT(list[0]); list[0] = 4; PRINT(list[0])`
  - Dictionaries. `dict = {"abc": 123}`. Full behavior in `dict.myopl`
+ - Added file descriptor-based file I/O. `file-io.myopl`
 
 ## -- Original README starts below --
 
