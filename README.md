@@ -16,6 +16,7 @@ Additions so far:
  - Dictionaries. `dict = {"abc": 123}`. Full behavior in `dict.myopl`
  - Added file descriptor-based file I/O. `file-io.myopl`
  - Backslash makes lexer skip next character.
+ - More escape characters. The lexer now supports every single escape sequence Python does, including stuff like `"Hello,\x0AWorld"`.
 
 ## -- Original README starts below --
 
