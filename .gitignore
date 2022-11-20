@@ -136,3 +136,4 @@ pip-selfcheck.json
 
 # Project-specific gitignores
 examples/new.txt
+.path

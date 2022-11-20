@@ -13,12 +13,21 @@ from typing import Any
 #######################################
 # OPEN FILES (so they don't get automatically closed by GC)
 #######################################
+
 files = {}
 
 #######################################
 # CONSTANTS
 #######################################
 
+IMPORT_PATH_NAME = ".path"
+if not os.path.isfile(IMPORT_PATH_NAME):
+  IMPORT_PATHS = [".", os.getcwd() + "/std"]
+  with open(IMPORT_PATH_NAME, "w") as f:
+    f.write("\n".join(IMPORT_PATHS))
+else:
+  with open(IMPORT_PATH_NAME, "r") as f:
+    IMPORT_PATHS = list(f.readlines())
 DIGITS = '0123456789'
 LETTERS = string.ascii_letters
 VALID_IDENTIFIERS = LETTERS + DIGITS + "$_"
@@ -2870,16 +2879,28 @@ class Interpreter:
   
   def visit_ImportNode(self, node, context):
     res = RTResult()
-    filepath = res.register(self.visit(node.string_node, context))
+    filename = res.register(self.visit(node.string_node, context))
+    code = None
 
-    try:
-      with open(filepath.value, "r") as f:
-        filename = filepath.value.split("/")[-1]
-        code = f.read()
-    except FileNotFoundError:
+    for path in IMPORT_PATHS:
+      try:
+        filepath = os.path.join(path, filename.value)
+        with open(filepath, "r") as f:
+          code = f.read()
+          beginning = "/" if filepath.startswith("/") else ""
+          split = filepath.split("/")
+          split = beginning + "/".join(split[:-1]), split[-1]
+          os.chdir(split[0])
+          filename = split[1]
+          break
+      except FileNotFoundError:
+        continue
+    
+    if code is None:
       return res.failure(RTError(
         node.string_node.pos_start.copy(), node.string_node.pos_end.copy(),
-        f"Can't find file '{filepath.value}'", context
+        f"Can't find file '{filepath}' in '{IMPORT_PATH_NAME}'. Please add the directory your file is into that file",
+        context
       ))
     
     _, error = run(filename, code, context, node.pos_start.copy())
