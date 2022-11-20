@@ -15,6 +15,7 @@ Additions so far:
  - Proper indexing. `list = [1, 2, 3]; PRINT(list[0]); list[0] = 4; PRINT(list[0])`
  - Dictionaries. `dict = {"abc": 123}`. Full behavior in `dict.myopl`
  - Added file descriptor-based file I/O. `file-io.myopl`
+ - Backslash makes lexer skip next character.
 
 ## -- Original README starts below --
 
