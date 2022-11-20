@@ -8,7 +8,7 @@ import string
 import os
 import math
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, List, Tuple
 
 #######################################
 # OPEN FILES (so they don't get automatically closed by GC)
@@ -280,6 +280,8 @@ KEYWORDS = [
   'AS',
   'FROM',
   'IN',
+  'SWITCH',
+  'CASE',
 ]
 
 class Token:
@@ -733,6 +735,21 @@ class DictNode:
       result += f"{key!r}: {value!r}"
     return result + "})"
 
+INDENTATION = 4
+
+@dataclass
+class SwitchNode:
+  condition: Any
+  cases: List[Tuple[Any, ListNode]]
+  else_case: ListNode
+  pos_start: Position
+  pos_end: Position
+
+  def __repr__(self): # holy shit
+    return f"(SWITCH {self.condition!r}\n " + (" " * INDENTATION) + ("\n "+ " " * INDENTATION).join(
+      f"CASE {case_cond!r}\n " + (" " * INDENTATION * 2) + f"{case_body!r}" for case_cond, case_body in self.cases
+    ) + "\n " + (" " * INDENTATION) + "ELSE\n" + (" " * INDENTATION * 2) + f"{self.else_case!r})"
+
 #######################################
 # PARSE RESULT
 #######################################
@@ -879,12 +896,17 @@ class Parser:
       self.advance(res)
       try_node = res.register(self.try_statement())
       return res.success(try_node)
+    
+    if self.current_tok.matches(TT_KEYWORD, 'SWITCH'):
+      self.advance(res)
+      switch_node = res.register(self.switch_statement())
+      return res.success(switch_node)
 
     expr = res.register(self.expr())
     if res.error:
       return res.failure(InvalidSyntaxError(
         self.current_tok.pos_start, self.current_tok.pos_end,
-        "Expected 'RETURN', 'CONTINUE', 'BREAK', 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[', '{' or 'NOT'"
+        "Expected 'SWITCH', 'RETURN', 'CONTINUE', 'BREAK', 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[', '{' or 'NOT'"
       ))
     return res.success(expr)
 
@@ -1687,6 +1709,64 @@ class Parser:
     
     return res.success(TryNode(try_block, exc_iden, catch_block, pos_start, self.current_tok.pos_end.copy()))
 
+  def switch_statement(self):
+    res = ParseResult()
+    ("in switch_statement()")
+    pos_start = self.current_tok.pos_start
+
+    ("before condition")
+    condition = res.register(self.expr())
+    if res.error: 
+      (res.error)
+      return res
+    ("after condition")
+
+    if self.current_tok.type != TT_NEWLINE:
+      return res.failure(InvalidSyntaxError(
+        self.current_tok.pos_start, self.current_tok.pos_end,
+        "Expected newline"
+      ))
+    self.advance(res)
+
+    cases = []
+    while self.current_tok.matches(TT_KEYWORD, "CASE"):
+      self.advance(res)
+      case = res.register(self.expr())
+      if res.error: return res
+
+      if self.current_tok.type != TT_NEWLINE:
+        return res.failure(InvalidSyntaxError(
+          self.current_tok.pos_start, self.current_tok.pos_end,
+          "Expected newline"
+        ))
+      self.advance(res)
+
+      ("before case")
+      body = res.register(self.statements())
+      ("after case")
+      if res.error: return res
+
+      cases.append((case, body))
+    
+    else_case = None
+    if self.current_tok.matches(TT_KEYWORD, "ELSE"):
+      self.advance(res)
+      else_case = res.register(self.statements())
+      if res.error: return res
+    
+    if not self.current_tok.matches(TT_KEYWORD, "END"):
+      return res.failure(InvalidSyntaxError(
+        self.current_tok.pos_start, self.current_tok.pos_end,
+        "Expected 'END'"
+      ))
+    
+    pos_end = self.current_tok.pos_end
+    self.advance(res)
+
+    node = SwitchNode(condition, cases, else_case, pos_start, pos_end)
+    (cases)
+    (node)
+    return res.success(node)
 
   ###################################
 
@@ -3013,6 +3093,30 @@ class Interpreter:
       values[key.value] = value
     
     return res.success(Dict(values))
+
+  def visit_SwitchNode(self, node, context):
+    res = RTResult()
+    condition = res.register(self.visit(node.condition, context))
+    if res.should_return(): return res
+
+    for case, body in node.cases:
+      case = res.register(self.visit(case, context))
+      if res.should_return(): return res
+
+      eq, error = condition.get_comparison_eq(case)
+      if error: return res.failure(error)
+
+      if eq.value:
+        res.register(self.visit(body, context))
+        if res.should_return(): return res
+        break
+    else: # no break
+      else_case = node.else_case
+      if else_case:
+        res.register(self.visit(else_case, context))
+        if res.should_return(): return res
+    
+    return res.success(Number.null)
 
 #######################################
 # CREATE FAKE POS

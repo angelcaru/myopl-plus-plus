@@ -1,0 +1,12 @@
+WRITE(1, "(a/b/c) ")
+SWITCH INPUT()
+    CASE "a"
+        PRINT("Hey! (a)")
+    CASE "b"
+        PRINT("Hi! (b)")
+    CASE "c"
+        PRINT("Hello! (c)")
+    ELSE
+        WRITE(2, "You are literally Satan\n")
+        RETURN 1
+END
