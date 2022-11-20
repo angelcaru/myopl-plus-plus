@@ -8,6 +8,7 @@ import string
 import os
 import math
 import time
+import sys
 from dataclasses import dataclass
 from typing import Any, List, Tuple
 
@@ -3150,10 +3151,18 @@ def create_fake_pos(desc: str) -> Position:
 # RUN
 #######################################
 
+def make_argv():
+  argv = []
+  fake_pos = create_fake_pos("<argv>")
+  for arg in sys.argv[1:]:
+    argv.append(String(arg).set_pos(fake_pos, fake_pos))
+  return List(argv).set_pos(fake_pos, fake_pos)
+
 global_symbol_table = SymbolTable()
 global_symbol_table.set("NULL", Number.null)
 global_symbol_table.set("FALSE", Number.false)
 global_symbol_table.set("TRUE", Number.true)
+global_symbol_table.set("ARGV", make_argv())
 global_symbol_table.set("MATH_PI", Number.math_PI)
 global_symbol_table.set("PRINT", BuiltInFunction.print)
 global_symbol_table.set("PRINT_RET", BuiltInFunction.print_ret)
@@ -3175,6 +3184,7 @@ global_symbol_table.set("READ", BuiltInFunction.read)
 global_symbol_table.set("WRITE", BuiltInFunction.write)
 global_symbol_table.set("CLOSE", BuiltInFunction.close)
 global_symbol_table.set("WAIT", BuiltInFunction.wait)
+
 
 def run(fn, text, context=None, entry_pos=None):
   # Generate tokens

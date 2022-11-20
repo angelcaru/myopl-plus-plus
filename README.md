@@ -21,6 +21,7 @@ Additions so far:
  - Top-level RETURN (exit code)
  - `SWITCH` statements (my language is now better than Python 3.9). `switch.myopl`
  - `WAIT` function.
+ - `ARGV` variable.
 
 ## -- Original README starts below --
 
