@@ -1,6 +1,0 @@
-
-FUN hi() -> PRINT("hello")
-
-# oh no
-
-# PRINT(1/0)
