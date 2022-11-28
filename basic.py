@@ -10,7 +10,7 @@ import math
 import time
 import sys
 from dataclasses import dataclass
-from typing import Any, List, Tuple
+from typing import *
 
 #######################################
 # OPEN FILES (so they don't get automatically closed by GC)
@@ -68,31 +68,31 @@ class Value:
     return None, self.illegal_operation(other)
 
   def get_comparison_eq(self, other):
-    return Number(bool(self.value == other.value)), None
+    return None, self.illegal_operation(other)
 
   def get_comparison_ne(self, other):
-    return Number(bool(self.value != other.value)), None
+    return None, self.illegal_operation(other)
 
   def get_comparison_lt(self, other):
-    return Number(bool(self.value < other.value)), None
+    return None, self.illegal_operation(other)
 
   def get_comparison_gt(self, other):
-    return Number(bool(self.value > other.value)), None
+    return None, self.illegal_operation(other)
 
   def get_comparison_lte(self, other):
-    return Number(bool(self.value <= other.value)), None
+    return None, self.illegal_operation(other)
 
   def get_comparison_gte(self, other):
-    return Number(bool(self.value >= other.value)), None
+    return None, self.illegal_operation(other)
 
   def anded_by(self, other):
-    return Number(bool(self.value and other.value)), None
+    return None, self.illegal_operation(other)
 
   def ored_by(self, other):
-    return Number(bool(self.value or other.value)), None
+    return None, self.illegal_operation(other)
 
   def notted(self): # why need `other` for NOT?
-    return Number(bool(not self.value)), None
+    return None, self.illegal_operation()
   
   def iter(self):
     return Iterator(self.gen)
@@ -229,6 +229,7 @@ class Position:
 # TOKENS
 #######################################
 
+# TODO: make TT an enum
 TT_INT				= 'INT'
 TT_FLOAT    	= 'FLOAT'
 TT_STRING			= 'STRING'
@@ -314,6 +315,23 @@ class Token:
 # LEXER
 #######################################
 
+SINGLE_CHAR_TOKS: Dict[str, str] = {
+  ";": TT_NEWLINE,
+  "\n": TT_NEWLINE,
+  "+": TT_PLUS,
+  "*": TT_MUL,
+  "/": TT_DIV,
+  "^": TT_POW,
+  "(": TT_LPAREN,
+  ")": TT_RPAREN,
+  "[": TT_LSQUARE,
+  "]": TT_RSQUARE,
+  "{": TT_LCURLY,
+  "}": TT_RCURLY,
+  ",": TT_COMMA,
+  ":": TT_COLON,
+}
+
 class Lexer:
   def __init__(self, fn, text):
     self.fn = fn
@@ -330,54 +348,22 @@ class Lexer:
     tokens = []
 
     while self.current_char != None:
-      if self.current_char in ' \t':
+      if self.current_char in SINGLE_CHAR_TOKS:
+        tt = SINGLE_CHAR_TOKS[self.current_char]
+        self.advance()
+        tokens.append(Token(tt, pos_start=self.pos))
+      elif self.current_char.isspace():
         self.advance()
       elif self.current_char == '#':
         self.skip_comment()
-      elif self.current_char in ';\n':
-        tokens.append(Token(TT_NEWLINE, pos_start=self.pos))
-        self.advance()
       elif self.current_char in DIGITS:
         tokens.append(self.make_number())
       elif self.current_char in VALID_IDENTIFIERS:
         tokens.append(self.make_identifier())
       elif self.current_char == '"':
         tokens.append(self.make_string())
-      elif self.current_char == '+':
-        tokens.append(Token(TT_PLUS, pos_start=self.pos))
-        self.advance()
       elif self.current_char == '-':
         tokens.append(self.make_minus_or_arrow())
-      elif self.current_char == '*':
-        tokens.append(Token(TT_MUL, pos_start=self.pos))
-        self.advance()
-      elif self.current_char == '/':
-        tokens.append(Token(TT_DIV, pos_start=self.pos))
-        self.advance()
-      elif self.current_char == '^':
-        tokens.append(Token(TT_POW, pos_start=self.pos))
-        self.advance()
-      elif self.current_char == '(':
-        tokens.append(Token(TT_LPAREN, pos_start=self.pos))
-        self.advance()
-      elif self.current_char == ')':
-        tokens.append(Token(TT_RPAREN, pos_start=self.pos))
-        self.advance()
-      elif self.current_char == '[':
-        tokens.append(Token(TT_LSQUARE, pos_start=self.pos))
-        self.advance()
-      elif self.current_char == ']':
-        tokens.append(Token(TT_RSQUARE, pos_start=self.pos))
-        self.advance()
-      elif self.current_char == '{':
-        tokens.append(Token(TT_LCURLY, pos_start=self.pos))
-        self.advance()
-      elif self.current_char == '}':
-        tokens.append(Token(TT_RCURLY, pos_start=self.pos))
-        self.advance()
-      elif self.current_char == ':':
-        tokens.append(Token(TT_COLON, pos_start=self.pos))
-        self.advance()
       elif self.current_char == '!':
         token, error = self.make_not_equals()
         if error: return [], error
@@ -388,9 +374,6 @@ class Lexer:
         tokens.append(self.make_less_than())
       elif self.current_char == '>':
         tokens.append(self.make_greater_than())
-      elif self.current_char == ',':
-        tokens.append(Token(TT_COMMA, pos_start=self.pos))
-        self.advance()
       elif self.current_char == '\\':
         self.advance()
         self.advance()
@@ -733,7 +716,7 @@ class IndexSetNode:
 
 @dataclass
 class DictNode:
-  pairs: (Any, Any)
+  pairs: Tuple[Any, Any]
   pos_start: Position
   pos_end: Position
 
@@ -748,14 +731,14 @@ INDENTATION = 4
 @dataclass
 class SwitchNode:
   condition: Any
-  cases: List[Tuple[Any, ListNode]]
+  cases: list[Tuple[Any, ListNode]]
   else_case: ListNode
   pos_start: Position
   pos_end: Position
 
   def __repr__(self): # holy shit
     return f"(SWITCH {self.condition!r}\n " + (" " * INDENTATION) + ("\n "+ " " * INDENTATION).join(
-      f"CASE {case_cond!r}\n " + (" " * INDENTATION * 2) + f"{case_body!r}" for case_cond, case_body in self.cases
+      f"CASE {case_cond!r}\n " + (" " * INDENTATION * 2) + f"{case_body!r}" for case_cond, case_body in list(self.cases)
     ) + "\n " + (" " * INDENTATION) + "ELSE\n" + (" " * INDENTATION * 2) + f"{self.else_case!r})"
 
 #######################################
