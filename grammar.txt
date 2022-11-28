@@ -13,8 +13,7 @@ expr        : assign-expr
             : comp-expr ((KEYWORD:AND|KEYWORD:OR) comp-expr)*
 
 assign-expr : IDENTIFIER EQ expr
-            : dot LSQUARE expr RSQUARE EQ expr
-            : atom (DOT identifier)* EQ expr
+            : dot (LSQUARE expr RSQUARE)* EQ expr
 
 comp-expr   : NOT comp-expr
             : arith-expr ((EE|LT|GT|LTE|GTE) arith-expr)*

@@ -1092,7 +1092,7 @@ class Parser:
       return res.success(CallNode(func, arg_nodes))
     return res.success(func)
 
-  def index(self):
+  def index(self): # TODO: allow stuff like list[0].upper()[3].(...)
     res = ParseResult()
     noun = res.register(self.dot())
     if res.error: return res
@@ -1111,6 +1111,14 @@ class Parser:
       
       node = IndexGetNode(node, index, node.pos_start, self.current_tok.pos_end)
       self.advance(res)
+    
+    if self.current_tok.type == TT_EQ and isinstance(node, IndexGetNode):
+      self.advance(res)
+
+      value = res.register(self.expr())
+      if res.error: return res
+
+      node = IndexSetNode(node.indexee, node.index, value, node.pos_start, self.current_tok.pos_end)
     
     return res.success(node)
 
@@ -1131,6 +1139,14 @@ class Parser:
       
       node = DotGetNode(node, self.current_tok, node.pos_start, self.current_tok.pos_end)
       self.advance(res)
+    
+    if self.current_tok.type == TT_EQ and isinstance(node, DotGetNode):
+      self.advance(res)
+
+      value = res.register(self.expr())
+      if res.error: return res
+
+      node = DotSetNode(node.noun, node.verb, value, node.pos_start, self.current_tok.pos_end)
     
     return res.success(node)
 
@@ -3233,6 +3249,21 @@ class Interpreter:
 
     result, error = noun.get_dot(verb)
     if error: return res.failure(error)
+    return res.success(result)
+
+  def visit_DotSetNode(self, node, context):
+    res = RTResult()
+    noun = res.register(self.visit(node.noun, context))
+    if res.should_return(): return res
+
+    verb = node.verb.value
+
+    value = res.register(self.visit(node.value, context))
+    if res.should_return(): return res
+
+    result, error = noun.set_dot(verb, value)
+    if error: return res.failure(error)
+
     return res.success(result)
 
 #######################################
