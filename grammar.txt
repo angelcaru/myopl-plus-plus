@@ -13,7 +13,8 @@ expr        : assign-expr
             : comp-expr ((KEYWORD:AND|KEYWORD:OR) comp-expr)*
 
 assign-expr : IDENTIFIER EQ expr
-            : atom LSQUARE expr RSQUARE EQ expr
+            : dot LSQUARE expr RSQUARE EQ expr
+            : atom (DOT identifier)* EQ expr
 
 comp-expr   : NOT comp-expr
             : arith-expr ((EE|LT|GT|LTE|GTE) arith-expr)*
@@ -29,6 +30,10 @@ power       : call (POW factor)*
 
 call        : index (LPAREN (expr (COMMA expr)*)? RPAREN)?
 
+index       : dot (LSQUARE expr RSQUARE)*
+
+dot         : atom (DOT identifier)*
+
 atom        : INT|FLOAT|STRING|IDENTIFIER
             : LPAREN expr RPAREN
             : list-expr
@@ -39,8 +44,6 @@ atom        : INT|FLOAT|STRING|IDENTIFIER
             : func-def
             : do-expr
 
-index       : atom
-            : index LSQUARE expr RSQUARE
 
 list-expr   : LSQUARE (expr (COMMA expr)*)? RSQUARE
 

@@ -108,6 +108,20 @@ class Value:
 
   def execute(self, args):
     return RTResult().failure(self.illegal_operation())
+  
+  def get_dot(self, verb):
+    t = type(self)
+    attr = f"inner_{verb}"
+    if not hasattr(t, attr):
+      return None, RTError(
+        self.pos_start, self.pos_end,
+        f"Object of type '{t.__name__}' has no property of name '{verb}'",
+        self.context
+      )
+    return getattr(t, attr), None
+
+  def set_dot(self, verb, value):
+    return None, self.illegal_operation(verb, value)
 
   def copy(self):
     raise Exception('No copy method defined')
@@ -256,6 +270,7 @@ TT_ARROW			= 'ARROW'
 TT_LCURLY     = 'LCURLY'
 TT_RCURLY     = 'RCURLY'
 TT_COLON      = 'COLON'
+TT_DOT        = 'DOT'
 TT_NEWLINE		= 'NEWLINE'
 TT_EOF				= 'EOF'
 
@@ -330,6 +345,7 @@ SINGLE_CHAR_TOKS: Dict[str, str] = {
   "}": TT_RCURLY,
   ",": TT_COMMA,
   ":": TT_COLON,
+  ".": TT_DOT,
 }
 
 class Lexer:
@@ -350,8 +366,9 @@ class Lexer:
     while self.current_char != None:
       if self.current_char in SINGLE_CHAR_TOKS:
         tt = SINGLE_CHAR_TOKS[self.current_char]
+        pos = self.pos.copy()
         self.advance()
-        tokens.append(Token(tt, pos_start=self.pos))
+        tokens.append(Token(tt, pos_start=pos))
       elif self.current_char.isspace():
         self.advance()
       elif self.current_char == '#':
@@ -741,6 +758,27 @@ class SwitchNode:
       f"CASE {case_cond!r}\n " + (" " * INDENTATION * 2) + f"{case_body!r}" for case_cond, case_body in list(self.cases)
     ) + "\n " + (" " * INDENTATION) + "ELSE\n" + (" " * INDENTATION * 2) + f"{self.else_case!r})"
 
+@dataclass
+class DotGetNode:
+  noun: Any
+  verb: Token
+  pos_start: Position
+  pos_end: Position
+
+  def __repr__(self):
+    return f"({self.noun!r}.{self.verb.value})"
+
+@dataclass
+class DotSetNode:
+  noun: Any
+  verb: Token
+  value: Any
+  pos_start: Position
+  pos_end: Position
+
+  def __repr__(self):
+    return f"({self.noun!r}.{self.verb.value}={self.value!r})"
+
 #######################################
 # PARSE RESULT
 #######################################
@@ -1021,7 +1059,7 @@ class Parser:
 
   def call(self):
     res = ParseResult()
-    index = res.register(self.atom())
+    func = res.register(self.index())
     if res.error: return res
 
     if self.current_tok.type == TT_LPAREN:
@@ -1051,8 +1089,50 @@ class Parser:
           ))
 
         self.advance(res)
-      return res.success(CallNode(index, arg_nodes))
-    return res.success(index)
+      return res.success(CallNode(func, arg_nodes))
+    return res.success(func)
+
+  def index(self):
+    res = ParseResult()
+    noun = res.register(self.dot())
+    if res.error: return res
+
+    node = noun
+    while self.current_tok.type == TT_LSQUARE:
+      self.advance(res)
+      index = res.register(self.expr())
+      if res.error: return res
+
+      if self.current_tok.type != TT_RSQUARE:
+        return res.failure(InvalidSyntaxError(
+          self.current_tok.pos_start, self.current_tok.pos_start,
+          "Expected ']'"
+        ))
+      
+      node = IndexGetNode(node, index, node.pos_start, self.current_tok.pos_end)
+      self.advance(res)
+    
+    return res.success(node)
+
+  def dot(self):
+    res = ParseResult()
+    noun = res.register(self.atom())
+    if res.error: return res
+
+    node = noun
+    while self.current_tok.type == TT_DOT:
+      self.advance(res)
+
+      if self.current_tok.type != TT_IDENTIFIER:
+        return res.failure(InvalidSyntaxError(
+          self.current_tok.pos_start, self.current_tok.pos_start,
+          "Expected identifier"
+        ))
+      
+      node = DotGetNode(node, self.current_tok, node.pos_start, self.current_tok.pos_end)
+      self.advance(res)
+    
+    return res.success(node)
 
   def atom(self):
     res = ParseResult()
@@ -1124,29 +1204,6 @@ class Parser:
         tok.pos_start, tok.pos_end,
         "Expected int, float, identifier, '+', '-', '(', '[', IF', 'FOR', 'WHILE', 'FUN'"
       ))
-    
-    if self.current_tok.type == TT_LSQUARE:
-      self.advance(res)
-      index = res.register(self.expr())
-      if res.error: return res
-      
-      if self.current_tok.type != TT_RSQUARE:
-        return res.failure(InvalidSyntaxError(
-          tok.pos_start, self.current_tok.pos_end,
-          "Expected ']'"
-        ))
-
-      self.advance(res)
-
-      if self.current_tok.type == TT_EQ:
-        self.advance(res)
-
-        value = res.register(self.expr())
-        if res.error: return error
-
-        return res.success(IndexSetNode(node, index, value, tok.pos_start, self.current_tok.pos_end))
-      
-      return res.success(IndexGetNode(node, index, tok.pos_start, self.current_tok.pos_end))
     
     return res.success(node)
 
@@ -3166,6 +3223,17 @@ class Interpreter:
         if res.should_return(): return res
     
     return res.success(Number.null)
+
+  def visit_DotGetNode(self, node, context):
+    res = RTResult()
+    noun = res.register(self.visit(node.noun, context))
+    if res.should_return(): return res
+
+    verb = node.verb.value
+
+    result, error = noun.get_dot(verb)
+    if error: return res.failure(error)
+    return res.success(result)
 
 #######################################
 # CREATE FAKE POS
