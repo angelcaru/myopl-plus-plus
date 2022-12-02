@@ -1,0 +1,5 @@
+DO std
+  FUN read_all(filename)
+    # not implemented
+  END
+END

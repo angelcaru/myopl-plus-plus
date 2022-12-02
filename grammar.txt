@@ -42,7 +42,7 @@ atom        : INT|FLOAT|STRING|IDENTIFIER
             : while-expr
             : func-def
             : do-expr
-
+            : ns-expr
 
 list-expr   : LSQUARE (expr (COMMA expr)*)? RSQUARE
 
@@ -89,3 +89,5 @@ try-stmnt   : KEYWORD:TRY statements KEYWORD:CATCH KEYWORD:AS identifier
             | (NEWLINE statements KEYWORD:END)
 
 switch-stmnt: KEYWORD:SWITCH expr NEWLINE (KEYWORD:CASE expr NEWLINE statements)* (ELSE statements)? END
+
+ns-expr     : KEYWORD:NAMESPACE identifier? NEWLINE statements KEYWORD:END
