@@ -245,35 +245,35 @@ class Position:
 #######################################
 
 class TokenType(Enum):
-  INT				 = auto()
-  FLOAT    	 = auto()
-  STRING		 = auto()
+  INT         = auto()
+  FLOAT       = auto()
+  STRING     = auto()
   IDENTIFIER = auto()
-  KEYWORD		 = auto()
-  PLUS     	 = auto()
-  MINUS    	 = auto()
-  MUL      	 = auto()
-  DIV      	 = auto()
-  POW				 = auto()
-  EQ				 = auto()
-  LPAREN   	 = auto()
-  RPAREN   	 = auto()
+  KEYWORD     = auto()
+  PLUS        = auto()
+  MINUS       = auto()
+  MUL         = auto()
+  DIV         = auto()
+  POW         = auto()
+  EQ         = auto()
+  LPAREN      = auto()
+  RPAREN      = auto()
   LSQUARE    = auto()
   RSQUARE    = auto()
-  EE				 = auto()
-  NE				 = auto()
-  LT				 = auto()
-  GT				 = auto()
-  LTE				 = auto()
-  GTE				 = auto()
-  COMMA			 = auto()
-  ARROW			 = auto()
+  EE         = auto()
+  NE         = auto()
+  LT         = auto()
+  GT         = auto()
+  LTE         = auto()
+  GTE         = auto()
+  COMMA       = auto()
+  ARROW       = auto()
   LCURLY     = auto()
   RCURLY     = auto()
   COLON      = auto()
   DOT        = auto()
-  NEWLINE		 = auto()
-  EOF				 = auto()
+  NEWLINE     = auto()
+  EOF         = auto()
 
 KEYWORDS = [
   'AND',
@@ -303,6 +303,7 @@ KEYWORDS = [
   'CASE',
   'CONST',
   'NAMESPACE',
+  'CLASS'
 ]
 
 class Token:
@@ -794,6 +795,14 @@ class NamespaceNode:
       else ""
     }\n{self.body!r}\nEND)"""
 
+@dataclass
+class ClassNode:
+  class_name_tok: Token
+  body_nodes: ListNode
+  pos_start: Position
+  pos_end: Position
+  child: Optional[ListNode]= None
+
 #######################################
 # PARSE RESULT
 #######################################
@@ -1234,6 +1243,11 @@ class Parser:
       dict_expr = res.register(self.dict_expr())
       if res.error: return res
       node = dict_expr
+
+    elif tok.matches(TokenType.KEYWORD, 'CLASS'):
+      class_node = res.register(self.class_node())
+      if res.error: return res
+      node = class_node
 
     if node is None:
       return res.failure(InvalidSyntaxError(
@@ -1890,6 +1904,38 @@ class Parser:
     pos_end = self.current_tok.pos_end.copy()
     self.advance(res)
     return res.success(DoNode(statements, pos_start, pos_end))
+
+  def class_node(self): # TODO: fix Pylance whining about indentation
+    res = ParseResult()
+    pos_start = self.current_tok.pos_start
+    if not self.current_tok.matches(TokenType.KEYWORD, 'CLASS'):
+        return res.failure(InvalidSyntaxError(
+        self.current_tok.pos_start, self.current_tok.pos_end,
+        f"Expected 'CLASS'"
+        ))
+    self.advance(res)
+    if self.current_tok.type != TokenType.IDENTIFIER:
+        return res.failure(InvalidSyntaxError(
+        self.current_tok.pos_start, self.current_tok.pos_end,
+        f"Expected identifier"
+        ))
+    class_name_tok = self.current_tok
+    self.advance(res)
+    if self.current_tok.type != TokenType.NEWLINE:
+        return res.failure(InvalidSyntaxError(
+        self.current_tok.pos_start, self.current_tok.pos_end,
+        f"Expected NEWLINE"
+        ))
+    self.advance(res)
+    body = res.register(self.statements())
+    if res.error: return res
+    if not self.current_tok.matches(TokenType.KEYWORD, 'END'):
+        return res.failure(InvalidSyntaxError(
+        self.current_tok.pos_start, self.current_tok.pos_end,
+        f"Expected 'END'"
+        ))
+    self.advance(res)
+    return res.success(ClassNode(class_name_tok, body, pos_start, self.current_tok.pos_end))
 
   ###################################
 
@@ -2720,8 +2766,8 @@ BuiltInFunction.is_function = BuiltInFunction("is_function")
 BuiltInFunction.append      = BuiltInFunction("append")
 BuiltInFunction.pop         = BuiltInFunction("pop")
 BuiltInFunction.extend      = BuiltInFunction("extend")
-BuiltInFunction.len					= BuiltInFunction("len")
-BuiltInFunction.run					= BuiltInFunction("run")
+BuiltInFunction.len          = BuiltInFunction("len")
+BuiltInFunction.run          = BuiltInFunction("run")
 BuiltInFunction.open        = BuiltInFunction("open")
 BuiltInFunction.read        = BuiltInFunction("read")
 BuiltInFunction.write       = BuiltInFunction("write")
@@ -2814,6 +2860,76 @@ class Dict(Value):
 
   def copy(self):
     return Dict(self.values).set_pos(self.pos_start, self.pos_end).set_context(self.context)
+
+class Instance(Value):
+  def __init__(self, parent_class):
+    super().__init__()
+    self.parent_class = parent_class
+    self.symbol_table = None
+
+  def copy(self):
+    return self
+
+  def __repr__(self):
+    return f"<instance of class {self.parent_class.name}>"
+
+class Class(Value):
+  def __init__(self, name, symbol_table):
+    super().__init__()
+    self.name = name
+    self.symbol_table = symbol_table
+
+  def dived_by(self, other):
+    if not isinstance(other, String):
+      return None, self.illegal_operation(other)
+
+    value = self.symbol_table.get(other.value)
+    if not value:
+      return None, RTError(
+        self.pos_start, self.pos_end,
+        f"'{other.value}' is not defined",
+        self.context
+      )
+
+    return value, None
+
+  def execute(self, args):
+    res = RTResult()
+
+    exec_ctx = Context(self.name, self.context, self.pos_start)
+
+    inst = Instance(self)
+    inst.symbol_table = SymbolTable(self.symbol_table)
+
+    exec_ctx.symbol_table = inst.symbol_table
+    for name in self.symbol_table.symbols:
+      inst.symbol_table.set(name, self.symbol_table.symbols[name].copy())
+
+    for name in inst.symbol_table.symbols:
+      inst.symbol_table.symbols[name].set_context(exec_ctx)
+
+    inst.symbol_table.set('this', inst)
+    inst.symbol_table.set('self', inst)
+
+    method = inst.symbol_table.symbols[self.name] if self.name in inst.symbol_table.symbols else None
+
+    if method == None or not isinstance(method, Function):
+      return res.failure(RTError(
+        self.pos_start, self.pos_end,
+        f"Function '{self.name}' not defined",
+        self.context
+      ))
+
+    res.register(method.execute(args))
+    if res.should_return(): return res
+
+    return res.success(inst.set_context(self.context).set_pos(self.pos_start, self.pos_end))
+
+  def copy(self):
+    return self
+
+  def __repr__(self):
+    return f"<class {self.name}>"
 
 #######################################
 # CONTEXT
@@ -3315,6 +3431,19 @@ class Interpreter:
     if error: return res.failure(error)
 
     return res.success(result)
+  
+  def visit_ClassNode(self, node, context):
+    res = RTResult()
+
+    ctx = Context(node.class_name_tok.value, node.pos_start)
+    ctx.symbol_table = SymbolTable(context.symbol_table)
+
+    res.register(self.visit(node.body_nodes, ctx))
+    if res.should_return(): return res
+
+    cls_ = Class(node.class_name_tok.value, ctx.symbol_table).set_context(context).set_pos(node.pos_start, node.pos_end)
+    context.symbol_table.set(node.class_name_tok.value, cls_)
+    return res.success(cls_)
 
 #######################################
 # CREATE FAKE POS
