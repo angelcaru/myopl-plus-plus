@@ -303,6 +303,7 @@ KEYWORDS = [
   'CASE',
   'CONST',
   'NAMESPACE',
+  'STRUCT',
 ]
 
 class Token:
@@ -794,6 +795,25 @@ class NamespaceNode:
       else ""
     }\n{self.body!r}\nEND)"""
 
+@dataclass
+class StructNode:
+  name: str
+  fields: list[str]
+  pos_start: Position
+  pos_end: Position
+
+  def __repr__(self):
+    return f"STRUCT {self.name}: {', '.join(self.fields)}"
+
+@dataclass
+class StructCreationNode:
+  name: str
+  pos_start: Optional[Position] = None
+  pos_end: Optional[Position] = None
+
+  def __repr__(self):
+    return f"{self.name}{{}}"
+
 #######################################
 # PARSE RESULT
 #######################################
@@ -842,7 +862,7 @@ class Parser:
     dummy = ParseResult()
     self.advance(dummy)
 
-  def advance(self, res: ParseResult):
+  def advance(self, res: ParseResult) -> Optional[Token]:
     self.tok_idx += 1
     self.update_current_tok()
     res.register_advancement()
@@ -945,6 +965,11 @@ class Parser:
       self.advance(res)
       switch_node = res.register(self.switch_statement())
       return res.success(switch_node)
+    
+    if self.current_tok.matches(TokenType.KEYWORD, 'STRUCT'):
+      self.advance(res)
+      struct_node = res.register(self.struct_def())
+      return res.success(struct_node)
 
     expr = res.register(self.expr())
     if res.error:
@@ -1180,7 +1205,18 @@ class Parser:
 
     elif tok.type == TokenType.IDENTIFIER:
       self.advance(res)
-      node = VarAccessNode(tok)
+      if self.current_tok.type == TokenType.LCURLY:
+        struct_name = tok.value
+        self.advance(res)
+        if self.current_tok.type != TokenType.RCURLY:
+          return res.failure(InvalidSyntaxError(
+            self.current_tok.pos_start, self.current_tok.pos_end,
+            "Expected '}'"
+          ))
+        self.advance(res)
+        node = StructCreationNode(struct_name)
+      else:
+        node = VarAccessNode(tok)
 
     elif tok.type == TokenType.LPAREN:
       self.advance(res)
@@ -1872,6 +1908,37 @@ class Parser:
 
     node = SwitchNode(condition, cases, else_case, pos_start, pos_end)
     return res.success(node)
+
+  def struct_def(self):
+    res = ParseResult()
+
+    if self.current_tok.type != TokenType.IDENTIFIER:
+      return res.failure(InvalidSyntaxError(
+        self.current_tok.pos_start, self.current_tok.pos_end,
+        "Expected identifier"
+      ))
+
+    pos_start = self.current_tok.pos_start
+    name = self.current_tok.value
+    self.advance(res)
+
+    while self.current_tok.type == TokenType.NEWLINE: self.advance(res)
+
+    fields = []
+    while self.current_tok.type == TokenType.IDENTIFIER:
+      fields.append(self.current_tok.value)
+      self.advance(res)
+      while self.current_tok.type == TokenType.NEWLINE: self.advance(res)
+
+    if not self.current_tok.matches(TokenType.KEYWORD, 'END'):
+      return res.failure(InvalidSyntaxError(
+        self.current_tok.pos_start, self.current_tok.pos_end,
+        "Expected 'END' or identifier"
+      ))
+
+    pos_end = self.current_tok.pos_end
+    self.advance(res)
+    return res.success(StructNode(name=name, fields=fields, pos_start=pos_start, pos_end=pos_end))
 
   def namespace_expr(self):
     res = ParseResult()
@@ -2804,7 +2871,7 @@ class Dict(Value):
       result += f"{key}: {value}\n"
     
     return result[:-1]
-  
+
   def __repr__(self):
     result = "{"
     for key, value in self.values.items():
@@ -2814,6 +2881,41 @@ class Dict(Value):
 
   def copy(self):
     return Dict(self.values).set_pos(self.pos_start, self.pos_end).set_context(self.context)
+
+class StructInstance(Value):
+  def __init__(self, struct_name, fields):
+    super().__init__()
+    self.struct_name = struct_name
+    self.fields = fields
+
+  def __repr__(self):
+    result = f"{self.struct_name} {{"
+    for key, value in self.fields.items():
+      result += f"{key}: {value!r}, "
+    
+    return result[:-2] + "}"
+
+  def get_dot(self, verb):
+    if verb in self.fields:
+      return self.fields[verb].copy(), None
+    else:
+      return None, RTError(
+        self.pos_start, self.pos_end,
+        f"Could not find property {verb!r} in struct {self.struct_name!r}",
+        self.context)
+ 
+  def set_dot(self, verb, obj):
+    if verb in self.fields:
+      self.fields[verb] = obj
+      return Number.null, None
+    else:
+      return None, RTError(
+        self.pos_start, self.pos_end,
+        f"Could not find property {verb!r} in struct {self.struct_name!r}",
+        self.context)
+
+  def copy(self):
+    return StructInstance(self.struct_name, self.fields).set_pos(self.pos_start, self.pos_end).set_context(self.context)
 
 #######################################
 # CONTEXT
@@ -2833,6 +2935,7 @@ class Context:
 class SymbolTable:
   def __init__(self, parent=None):
     self.symbols = {}
+    self.structs = {}
     self.parent = parent
     self.const = set()
 
@@ -3273,7 +3376,7 @@ class Interpreter:
       case = res.register(self.visit(case, context))
       if res.should_return(): return res
 
-      print(f"[DEBUG] {object.__repr__(case)}")
+      #print(f"[DEBUG] {object.__repr__(case)}")
 
       eq, error = condition.get_comparison_eq(case)
       if error: return res.failure(error)
@@ -3316,12 +3419,25 @@ class Interpreter:
 
     return res.success(result)
 
+  def visit_StructNode(self, node, ctx):
+    # TODO: report struct redefinition
+    ctx.symbol_table.structs[node.name] = node.fields
+    return RTResult().success(Number.null)
+
+  def visit_StructCreationNode(self, node, ctx):
+    res = RTResult()
+    struct = ctx.symbol_table.structs[node.name]
+
+    return res.success(StructInstance(node.name, {field: Number.null for field in struct})
+              .set_pos(node.pos_start, node.pos_end)
+              .set_context(ctx))
+ 
 #######################################
 # CREATE FAKE POS
 #######################################
 
 def create_fake_pos(desc: str) -> Position:
-  return Position(0, 0, 0, desc, "<native code>")
+  return Position(0, 0, 0, desc, "<native code>") # hmm yes very native
 
 #######################################
 # RUN

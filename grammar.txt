@@ -1,12 +1,13 @@
 statements  : NEWLINE* statement (NEWLINE+ statement)* NEWLINE*
 
-statement		: KEYWORD:RETURN expr?
-						: KEYWORD:CONTINUE
-						: KEYWORD:BREAK
+statement	: KEYWORD:RETURN expr?
+			: KEYWORD:CONTINUE
+			: KEYWORD:BREAK
             : KEYWORD:IMPORT STRING
             : try-stmnt
             : switch-stmnt
-						: expr
+            : struct-def
+			: expr
 
 expr        : assign-expr
             : KEYWORD:CONST identifier EQ expr
@@ -18,7 +19,7 @@ assign-expr : IDENTIFIER EQ expr
 comp-expr   : NOT comp-expr
             : arith-expr ((EE|LT|GT|LTE|GTE) arith-expr)*
 
-arith-expr  :	term ((PLUS|MINUS) term)*
+arith-expr  : term ((PLUS|MINUS) term)*
 
 term        : factor ((MUL|DIV) factor)*
 
@@ -43,6 +44,7 @@ atom        : INT|FLOAT|STRING|IDENTIFIER
             : func-def
             : do-expr
             : ns-expr
+            : struct-expr
 
 list-expr   : LSQUARE (expr (COMMA expr)*)? RSQUARE
 
@@ -84,6 +86,8 @@ param       : IDENTIFIER (EQ expr)? (KEYWORD:FROM expr)
 
 do-expr     : KEYWORD:DO statements KEYWORD:END
 
+struct-expr : identifier LCURLY RCURLY
+
 try-stmnt   : KEYWORD:TRY statements KEYWORD:CATCH KEYWORD:AS identifier 
               (KEYWORD:THEN statement)
             | (NEWLINE statements KEYWORD:END)
@@ -91,3 +95,6 @@ try-stmnt   : KEYWORD:TRY statements KEYWORD:CATCH KEYWORD:AS identifier
 switch-stmnt: KEYWORD:SWITCH expr NEWLINE (KEYWORD:CASE expr NEWLINE statements)* (ELSE statements)? END
 
 ns-expr     : KEYWORD:NAMESPACE identifier? NEWLINE statements KEYWORD:END
+
+// NOTE: newlines ommited
+struct-def  : KEYWORD:STRUCT identifier identifier* KEYWORD:END

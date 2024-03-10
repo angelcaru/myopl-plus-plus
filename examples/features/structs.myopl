@@ -1,0 +1,14 @@
+STRUCT Point
+  x
+  y
+END
+
+FUN print_point(p)
+  PRINT("(" + PRINT_RET(p.x) + ", " + PRINT_RET(p.y) + ")")
+END
+
+p = Point{}
+p.x = 69
+p.y = 420
+print_point(p)
+
